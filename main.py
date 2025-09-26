@@ -1,11 +1,7 @@
-import os
-from dotenv import load_dotenv
+"""Simple entry point for manual execution."""
 
-def main():
-    load_dotenv()
-    api = os.getenv("POLYGON_API_KEY", "")
-    print("Hello, fresh trading-bot 👋")
-    print("POLYGON_API_KEY:", "set" if api else "missing")
+from trading_bot.cli import app
 
 if __name__ == "__main__":
-    main()
+    print("🚀 Trading Bot ready. Use `tb --help` for commands.")
+    app()

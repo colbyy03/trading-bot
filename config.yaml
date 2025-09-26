@@ -1,0 +1,21 @@
+# Default configuration for the trading bot
+# Adjust tickers, dates, and strategy parameters as needed.
+tickers:
+  - SPY
+bar_size: "1min"
+start: "2023-01-01"
+end: "2023-03-31"
+transaction_cost_bps: 1.0
+slippage_bps: 1.0
+risk:
+  position_sizing: "fixed_fraction"
+  fraction: 0.1
+  max_positions: 5
+  stop_loss: 0.02
+  take_profit: 0.04
+strategy:
+  name: "sma_cross"
+  params:
+    fast: 10
+    slow: 20
+benchmark_ticker: "SPY"
