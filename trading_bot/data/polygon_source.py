@@ -6,7 +6,6 @@ import asyncio
 import os
 from collections.abc import AsyncIterator
 from typing import Any
-from urllib.parse import parse_qs, urlparse
 
 import pandas as pd
 import structlog
@@ -39,7 +38,6 @@ class PolygonDataSource:
     ) -> pd.DataFrame:
         """Fetch aggregates with transparent pagination."""
 
-        results: list[dict[str, Any]] = []
         request_args = {
             "ticker": ticker,
             "multiplier": 1,
@@ -50,72 +48,43 @@ class PolygonDataSource:
             "limit": limit,
         }
         log.info("polygon.fetch_aggregates.start", **request_args)
-        cursor: str | None = None
-        request_id: str | None = None
-        while True:
-            params = {"cursor": cursor} if cursor else None
-            response = self._rest_client.list_aggs(
-                **request_args,
-                raw=True,
-                params=params,
-            )
-            payload = response.json()
-            request_id = payload.get("request_id", request_id)
-            status = payload.get("status")
-            if status != "OK":
-                log.warning(
-                    "polygon.fetch_aggregates.non_ok",
-                    status=status,
-                    request_id=request_id,
-                    results=len(results),
+
+        results: list[dict[str, Any]] = []
+        try:
+            aggs_iterator = self._rest_client.list_aggs(**request_args)
+            for agg in aggs_iterator:
+                results.append(
+                    {
+                        "timestamp": agg.timestamp,
+                        "open": agg.open,
+                        "high": agg.high,
+                        "low": agg.low,
+                        "close": agg.close,
+                        "volume": agg.volume,
+                        "vwap": getattr(agg, "vwap", None),
+                        "trade_count": getattr(agg, "transactions", None),
+                    }
                 )
-            page_results = payload.get("results", [])
-            if not page_results:
-                break
-            results.extend(page_results)
-            next_url = payload.get("next_url")
-            if not next_url:
-                break
-            parsed = urlparse(next_url)
-            query = parse_qs(parsed.query)
-            cursor_values = query.get("cursor")
-            cursor = cursor_values[0] if cursor_values else None
-            if not cursor:
-                break
+        except Exception:
+            log.exception("polygon.fetch_aggregates.error", **request_args)
+            raise
+
         if not results:
             log.warning(
                 "polygon.fetch_aggregates.empty",
                 ticker=ticker,
                 start=start,
                 end=end,
-                request_id=request_id,
             )
             return pd.DataFrame(columns=["timestamp", "open", "high", "low", "close", "volume"])
+
         df = pd.DataFrame(results)
-        df.rename(
-            columns={
-                "t": "timestamp",
-                "o": "open",
-                "h": "high",
-                "l": "low",
-                "c": "close",
-                "v": "volume",
-                "vw": "vwap",
-                "n": "trade_count",
-            },
-            inplace=True,
-        )
         df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms", utc=True).dt.tz_convert(
             "US/Eastern"
         )
-        df.sort_values("timestamp", inplace=True)
         df.set_index("timestamp", inplace=True)
-        log.info(
-            "polygon.fetch_aggregates.completed",
-            ticker=ticker,
-            rows=len(df),
-            request_id=request_id,
-        )
+        df.sort_index(inplace=True)
+        log.info("polygon.fetch_aggregates.completed", ticker=ticker, rows=len(df))
         return df
 
     def fetch_and_cache(
