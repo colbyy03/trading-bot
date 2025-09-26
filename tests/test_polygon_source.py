@@ -1,16 +1,10 @@
 
+from dataclasses import dataclass
+
 import pandas as pd
 import pytest
 
 from trading_bot.data.polygon_source import PolygonDataSource
-
-
-class DummyResponse:
-    def __init__(self, payload):
-        self._payload = payload
-
-    def json(self):
-        return self._payload
 
 
 @pytest.fixture(autouse=True)
@@ -18,48 +12,45 @@ def polygon_env(monkeypatch):
     monkeypatch.setenv("POLYGON_API_KEY", "test")
 
 
+@dataclass
+class DummyAgg:
+    timestamp: int
+    open: float
+    high: float
+    low: float
+    close: float
+    volume: float
+    vwap: float
+    transactions: int
+
+
 def test_fetch_aggregates_paginates(monkeypatch):
-    payloads = [
-        {
-            "status": "OK",
-            "results": [
-                {
-                    "t": 1_700_000_000_000,
-                    "o": 1,
-                    "h": 2,
-                    "l": 0.5,
-                    "c": 1.5,
-                    "v": 100,
-                    "vw": 1.2,
-                    "n": 10,
-                }
-            ],
-            "next_url": "next",
-            "request_id": "abc",
-        },
-        {
-            "status": "OK",
-            "results": [
-                {
-                    "t": 1_700_000_060_000,
-                    "o": 1.6,
-                    "h": 2.1,
-                    "l": 1.4,
-                    "c": 1.8,
-                    "v": 120,
-                    "vw": 1.7,
-                    "n": 12,
-                }
-            ],
-            "request_id": "abc",
-        },
-    ]
-    calls = iter(payloads)
+    payloads = (
+        DummyAgg(
+            timestamp=1_700_000_000_000,
+            open=1,
+            high=2,
+            low=0.5,
+            close=1.5,
+            volume=100,
+            vwap=1.2,
+            transactions=10,
+        ),
+        DummyAgg(
+            timestamp=1_700_000_060_000,
+            open=1.6,
+            high=2.1,
+            low=1.4,
+            close=1.8,
+            volume=120,
+            vwap=1.7,
+            transactions=12,
+        ),
+    )
 
     class DummyRest:
         def list_aggs(self, *args, **kwargs):
-            payload = next(calls)
-            return DummyResponse(payload)
+            return iter(payloads)
 
     ds = PolygonDataSource(api_key="test")
     monkeypatch.setattr(ds, "_rest_client", DummyRest())
