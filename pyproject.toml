@@ -40,11 +40,11 @@ dev = [
 tb = "trading_bot.cli:app"
 
 [tool.hatch.build]
-# Ensure editable installs expose the package directory on sys.path instead of
-# the repository root. This avoids situations where the generated `.pth` file
-# points at a stale checkout location, which manifested as `ModuleNotFoundError`
-# for `trading_bot` when running the CLI after an editable install.
-dev-mode-dirs = ["trading_bot"]
+# Ensure editable installs expose the repository root on ``sys.path`` so the
+# ``trading_bot`` package can be imported during development installs. Pointing
+# directly at the package directory breaks imports because Python expects the
+# *parent* directory of the package on ``sys.path``.
+dev-mode-dirs = ["."]
 
 [tool.hatch.build.targets.wheel]
 packages = ["trading_bot"]
