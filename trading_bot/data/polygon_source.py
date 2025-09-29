@@ -22,9 +22,25 @@ class PolygonDataSource:
 
     def __init__(self, api_key: str | None = None) -> None:
         self.api_key = api_key or os.environ.get("POLYGON_API_KEY")
+        self._rest_client: RESTClient | None = None
+
+    # ------------------------------------------------------------------
+    def _require_api_key(self, action: str) -> str:
+        """Return the configured API key or raise a helpful error."""
+
         if not self.api_key:
-            raise RuntimeError("POLYGON_API_KEY environment variable is required")
-        self._rest_client = RESTClient(self.api_key)
+            raise RuntimeError(
+                "POLYGON_API_KEY environment variable is required "
+                f"to {action}. Please export it before running this command "
+                "or download the data on another machine and copy the cache."
+            )
+        return self.api_key
+
+    def _get_rest_client(self) -> RESTClient:
+        if self._rest_client is None:
+            api_key = self._require_api_key("download data from Polygon")
+            self._rest_client = RESTClient(api_key)
+        return self._rest_client
 
     # region Historical data -----------------------------------------------------------------
     def fetch_aggregates(
@@ -51,7 +67,7 @@ class PolygonDataSource:
 
         results: list[dict[str, Any]] = []
         try:
-            aggs_iterator = self._rest_client.list_aggs(**request_args)
+            aggs_iterator = self._get_rest_client().list_aggs(**request_args)
             for agg in aggs_iterator:
                 results.append(
                     {
@@ -115,7 +131,7 @@ class PolygonDataSource:
         """Fetch splits for the given ticker."""
 
         log.info("polygon.fetch_splits.start", ticker=ticker)
-        splits = list(self._rest_client.list_splits(ticker=ticker, raw=False))
+        splits = list(self._get_rest_client().list_splits(ticker=ticker, raw=False))
         df = pd.DataFrame(splits)
         if not df.empty:
             df["execution_date"] = pd.to_datetime(df["execution_date"])
@@ -125,7 +141,7 @@ class PolygonDataSource:
         """Fetch dividends for the given ticker."""
 
         log.info("polygon.fetch_dividends.start", ticker=ticker)
-        divs = list(self._rest_client.list_dividends(ticker=ticker, raw=False))
+        divs = list(self._get_rest_client().list_dividends(ticker=ticker, raw=False))
         df = pd.DataFrame(divs)
         if not df.empty:
             df["ex_dividend_date"] = pd.to_datetime(df["ex_dividend_date"])
@@ -167,9 +183,8 @@ class PolygonDataSource:
                 )
                 loop.call_soon_threadsafe(queue.put_nowait, bar)
 
-        client = WebSocketClient(
-            subscriptions=[f"A.{ticker}"], api_key=self.api_key, feed="delayed"
-        )
+        api_key = self._require_api_key("stream data from Polygon")
+        client = WebSocketClient(subscriptions=[f"A.{ticker}"], api_key=api_key, feed="delayed")
         client.on_message = handle_message
 
         log.info("polygon.stream.start", ticker=ticker, timespan=timespan)

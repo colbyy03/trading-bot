@@ -20,6 +20,24 @@ DEFAULT_REPORT_NAME = "run"
 app = typer.Typer(help="Trading bot CLI")
 
 
+def _handle_polygon_error(exc: RuntimeError) -> None:
+    message = str(exc)
+    if "POLYGON_API_KEY" in message:
+        typer.echo(f"Error: {message}", err=True)
+        typer.echo(
+            "Set the POLYGON_API_KEY environment variable with your Polygon Stocks "
+            "Starter API key. See the README for setup instructions.",
+            err=True,
+        )
+        typer.echo(
+            "If you have already downloaded data on another machine, copy the "
+            ".cache directory instead of forcing a re-download.",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+    raise exc
+
+
 @app.command()
 def fetch(
     ticker: str = typer.Option(..., help="Ticker symbol"),
@@ -31,7 +49,11 @@ def fetch(
     """Fetch and cache historical data."""
 
     ds = PolygonDataSource()
-    df = ds.fetch_and_cache(ticker, start, end, bar_size, force=force)
+    try:
+        df = ds.fetch_and_cache(ticker, start, end, bar_size, force=force)
+    except RuntimeError as exc:  # pragma: no cover - thin CLI wrapper
+        _handle_polygon_error(exc)
+        raise
     path = cache_key(ticker, bar_size, start, end)
     typer.echo(f"Fetched {len(df)} rows. Saved to {path}")
 
@@ -46,12 +68,16 @@ def backtest(
     cfg = load_config(config)
     ticker = cfg.tickers[0]
     ds = PolygonDataSource()
-    df = ds.fetch_and_cache(
-        ticker,
-        cfg.start or "2018-01-01",
-        cfg.end or "2024-01-01",
-        cfg.bar_size,
-    )
+    try:
+        df = ds.fetch_and_cache(
+            ticker,
+            cfg.start or "2018-01-01",
+            cfg.end or "2024-01-01",
+            cfg.bar_size,
+        )
+    except RuntimeError as exc:  # pragma: no cover - thin CLI wrapper
+        _handle_polygon_error(exc)
+        raise
     engine = BacktestEngine()
     report_path = Path("reports") / report_name
     engine.run(df, cfg, report_path)
@@ -71,7 +97,11 @@ def optimize(
 
     param_grid = json.loads(grid)
     ds = PolygonDataSource()
-    data = ds.fetch_and_cache(ticker, start, end, bar_size)
+    try:
+        data = ds.fetch_and_cache(ticker, start, end, bar_size)
+    except RuntimeError as exc:  # pragma: no cover - thin CLI wrapper
+        _handle_polygon_error(exc)
+        raise
     cfg = Config(
         tickers=[ticker],
         bar_size=bar_size,
@@ -91,18 +121,31 @@ def live(
 
     cfg = load_config(config)
     runtime = LiveSignalRuntime(cfg)
-    asyncio.run(runtime.run())
+    try:
+        asyncio.run(runtime.run())
+    except RuntimeError as exc:  # pragma: no cover - thin CLI wrapper
+        _handle_polygon_error(exc)
+        raise
 
 
 @app.command()
 def plot(report: Path = typer.Option(..., help="Path to summary.json")) -> None:  # noqa: B008
     """Re-render plots for an existing report."""
 
+    if not report.exists():
+        typer.echo(f"Error: {report} does not exist", err=True)
+        raise typer.Exit(code=1)
     report_dir = report.parent
-    equity = pd.read_csv(report_dir / "equity_curve.csv", index_col=0, parse_dates=True).squeeze()
-    benchmark = pd.read_csv(
-        report_dir / "benchmark_curve.csv", index_col=0, parse_dates=True
-    ).squeeze()
+    equity_path = report_dir / "equity_curve.csv"
+    benchmark_path = report_dir / "benchmark_curve.csv"
+    if not equity_path.exists() or not benchmark_path.exists():
+        typer.echo(
+            "Error: Expected equity_curve.csv and benchmark_curve.csv alongside summary.json.",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+    equity = pd.read_csv(equity_path, index_col=0, parse_dates=True).squeeze()
+    benchmark = pd.read_csv(benchmark_path, index_col=0, parse_dates=True).squeeze()
     from trading_bot.backtest.plotting import generate_plots
 
     generate_plots(report_dir, equity, benchmark)
