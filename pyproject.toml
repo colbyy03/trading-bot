@@ -39,11 +39,11 @@ dev = [
 [project.scripts]
 tb = "trading_bot.cli:app"
 
+[tool.hatch.build]
+dev-mode-dirs = ["."]
+
 [tool.hatch.build.targets.wheel]
 packages = ["trading_bot"]
-
-[tool.hatch.build.targets.editable]
-path = "."
 
 [tool.pytest.ini_options]
 addopts = "-ra"
