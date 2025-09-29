@@ -26,7 +26,9 @@ Production-ready Polygon.io powered trading bot with backtesting, walk-forward o
 python -m venv .venv
 source .venv/bin/activate
 pip install -U pip
-pip install -e .[dev]
+pip install -e ".[dev]"
+
+> **Note for Zsh users:** if you are using `zsh`, make sure to wrap `.[dev]` in quotes (as shown above) so the shell does not try to expand it as a glob pattern.
 ```
 
 Copy `.env.example` to `.env` and populate the secrets or export them in your shell.
