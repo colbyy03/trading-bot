@@ -1,10 +1,10 @@
 
 from dataclasses import dataclass
-
 import pandas as pd
 import pytest
 
 from trading_bot.data.polygon_source import PolygonDataSource
+from trading_bot.data import cache
 
 
 @pytest.fixture(autouse=True)
@@ -58,3 +58,26 @@ def test_fetch_aggregates_paginates(monkeypatch):
     assert isinstance(df, pd.DataFrame)
     assert len(df) == 2
     assert df.iloc[0]["close"] == 1.5
+
+
+def test_fetch_and_cache_uses_cache_without_api_key(monkeypatch, tmp_path):
+    monkeypatch.delenv("POLYGON_API_KEY", raising=False)
+    cache_dir = tmp_path / "cache"
+    monkeypatch.setattr(cache, "CACHE_DIR", cache_dir, raising=False)
+    df = pd.DataFrame(
+        {
+            "open": [1.0],
+            "high": [1.1],
+            "low": [0.9],
+            "close": [1.05],
+            "volume": [100],
+        },
+        index=pd.to_datetime(["2023-01-03"], utc=True),
+    )
+    key = cache.cache_key("SPY", "1min", "2023-01-01", "2023-01-02")
+    cache.save_dataframe_to_cache(df, key)
+
+    ds = PolygonDataSource()
+    result = ds.fetch_and_cache("SPY", "2023-01-01", "2023-01-02", "1min")
+
+    pd.testing.assert_frame_equal(result, df)
